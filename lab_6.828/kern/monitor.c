@@ -24,6 +24,7 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Trace back call stack", mon_backtrace },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -54,10 +55,55 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
+
+// static inline uint32_t
+// read_ebp(void)
+// {
+// 	uint32_t ebp;
+// 	asm volatile("movl %%ebp,%0" : "=r" (ebp));
+// 	return ebp;
+// }
+
+		//        +------------+   |
+		//        | arg 2      |   
+		//        +------------+    >- previous function's stack frame
+		//        | arg 1      |   /
+		//        +------------+   |
+		//        | ret %eip   |   /
+		//        +============+   
+		//        | saved %ebp |   
+		// %ebp-> +------------+   |
+		//        |            |   |
+		//        |   local    |   
+		//        | variables, |    >- current function's stack frame
+		//        |    etc.    |   /
+		//        |            |   |
+		//        |            |   |
+		// %esp-> +------------+   /
+
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+	cprintf("Stack backtrace:\n");
+	uint32_t *ebp;
+	struct Eipdebuginfo info;
+	int ret;
+
+	ebp = (uint32_t *)read_ebp();
+	while (ebp != 0) {
+		cprintf("  ebp %08x", ebp);
+		cprintf(" eip %08x  args", *(ebp+1));
+		for (int i = 2; i < 7; ++i)
+			cprintf(" %08x", *(ebp+i));
+		cprintf("\n");
+
+		ret = debuginfo_eip(*(ebp+1), &info);
+
+		if (ret == 0)
+			cprintf("    %s: %d: %.*s+%d\n", info.eip_file, info.eip_line, info.eip_fn_namelen, info.eip_fn_name, *(ebp+1) - info.eip_fn_addr);
+		ebp = (uint32_t *)*ebp;
+
+	}
 	return 0;
 }
 
